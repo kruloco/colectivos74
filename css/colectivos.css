@@ -1,0 +1,100 @@
+html { height: 100% }
+body { height: 100%; margin: 0; padding: 0 }
+
+/*Header largo y de muchas lineas*/
+.ui-title {
+    margin: 0.6em 10% 0.8em !important;
+    /*white-space: normal !important;*/
+}
+
+#map_canvas{
+    position:absolute;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+}
+
+#homePage{
+    background:url(../images/fondo.jpg) no-repeat;
+    background-size:100% 100%;
+}
+
+.botonesCentrados{
+    padding: 0px 30px 0px 30px ;
+}
+
+#cuadradito{
+    padding: 0.1em 0.4em;
+    background-color: #2489ce;
+    color: white;
+    font-size: 15px;
+    -webkit-border-radius: 10px;
+    -moz-border-radius: 10px;
+    border-radius: 10px;
+    text-align: center;
+    float: left;
+    margin-right: 4px
+}
+
+.img_centrada{
+    text-align: center;
+    display: block;
+    margin: auto;
+}
+
+.icono_caminando{
+    display: block;
+    width: 20px;
+    height: 27px;
+    float: left;
+    background: url('icons/walk.png') center bottom no-repeat;
+}
+
+.icono_colectivo{
+    display: block;
+    width: 20px;
+    height: 20px;
+    float: left;
+    background: url('icons/bus.png') center bottom no-repeat;
+}
+
+.icono_shuffle{
+    padding: 0em 0.2em;
+    border:1px solid #717B87;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    width: 28px;
+    height: 22px;
+    background: url('icons/shuffle.png') center bottom no-repeat #FFF;
+    -webkit-border-radius: 10px;
+    -moz-border-radius: 10px;
+    border-radius: 10px;
+}
+
+.nav-glyphish-example .ui-btn .ui-btn-inner {
+    padding-top: 40px !important;
+}
+.nav-glyphish-example .ui-btn .ui-icon {
+    border-radius: 5px 5px 5px 5px !important;
+    box-shadow: none !important;
+    height: 30px !important;
+    margin-left: -15px !important;
+    width: 30px !important;
+}
+
+/* road - off - mappin */
+.flag .ui-icon { 
+    background: url("icons/flag.png") no-repeat center whitesmoke !important;
+}
+
+.house .ui-icon { 
+    background: url("icons/house.png") no-repeat center whitesmoke !important;
+}
+
+.signpost .ui-icon { 
+    background: url("icons/signpost.png") no-repeat center whitesmoke !important;
+}
+
+.navigation .ui-icon { 
+    background: url("icons/navigation.png") no-repeat center whitesmoke !important;
+}
