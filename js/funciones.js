@@ -8,8 +8,11 @@ $(function() {
 
         // Función principal autoejecutable
         app.init = function() {
+
             document.addEventListener('deviceready', app.bindingsPG, false);
+
             app.bindings();
+
         };
 
         //Inicializa todos los EVENTOS de la página
@@ -108,6 +111,8 @@ $(function() {
 //Manejador de eventos de PhoneGap
         app.bindingsPG = function()
         {
+            navigator.splashscreen.show();
+
             celular.conexion = app.getConexion();
             if ((celular.conexion !== 'Ninguna') && (celular.conexion !== 'Desconocida')) {
                 celular.estado = true;
@@ -119,6 +124,8 @@ $(function() {
                 document.addEventListener("menubutton", app.onMenuButton, false);
                 document.addEventListener("searchbutton", app.onSearchButton, false);
             }
+            document.addEventListener("pause", app.cerrarAplicacion, false);
+
         };
 
         app.onMenuButton = function() {

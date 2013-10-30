@@ -8,10 +8,13 @@
     <preference name="orientation" value="portrait" />
     <preference name="target-device" value="universal" />
     <preference name="fullscreen" value="false" />
-    <icon src="icon.png" />
     <access origin="*"/>
-    <gap:splash src="icon2.png" />
     <gap:platform name="android" />
     <content src="index.html" />
-    
+    <feature name="SplashScreen">
+        <param name="android-package" value="org.apache.cordova.SplashScreen" />
+    </feature>
+    <preference name="splashscreen", "splash" />
+        <!--<gap:splash src="icon2.png" />-->
+        <!--<icon src="icon.png" />-->
 </widget>

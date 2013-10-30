@@ -10,10 +10,10 @@ var plazaIndependencia = new google.maps.LatLng(-32.88852486014176, -68.84470939
 //Recibe un origen y destino (LatLng) y usa Directions WALKING
 //Devuelve un objeto Ruta a través de callback
 function calcularRuta(cordOrigen, cordDestino, callback) {
-    var instrucciones = '', request = { origin: cordOrigen,
-            destination: cordDestino,
-            travelMode: google.maps.TravelMode.WALKING,
-            region: "AR"
+    var instrucciones = '', request = {origin: cordOrigen,
+        destination: cordDestino,
+        travelMode: google.maps.TravelMode.WALKING,
+        region: "AR"
     };
     directionsService.route(request, function(result, status) {
         if (status === google.maps.DirectionsStatus.OK) {
@@ -91,17 +91,23 @@ function detectarUbicacion() {
     var browserSupportFlag = new Boolean();
     if (navigator.geolocation) {
         browserSupportFlag = true;
-        navigator.geolocation.getCurrentPosition(function(position) {
-            var ubicacionActual = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
-            myGeocoderInverso(ubicacionActual, function(direccion) {
-                $('#origen').val(direccion);
-            });
-            alert("bien");
-        }, function() {
-            errorNoGeolocation(browserSupportFlag);
-        }, {enableHighAccuracy: false});
+        navigator.geolocation.getCurrentPosition(onSuccess, onError,
+                {enableHighAccuracy: true, //GPS
+                    timeout: 30000});
     } else {
         browserSupportFlag = false;
+        errorNoGeolocation(browserSupportFlag);
+    }
+
+    function onSuccess(position)
+    {
+        var ubicacionActual = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
+        myGeocoderInverso(ubicacionActual, function(direccion) {
+            $('#origen').val(direccion);
+        });
+    }
+    function onError(error)
+    {
         errorNoGeolocation(browserSupportFlag);
     }
 
@@ -114,7 +120,8 @@ function detectarUbicacion() {
         } else {
             mostrarModal("Tu navegador no soporta Geolocalización. Te ubicamos en Mendoza/Plaza Independencia.");
         }
-        insertarOrigen(plazaIndependencia, 'Plaza Independencia');
+        $('#origen').val('Plaza Independencia, Mendoza, Argentina');
+  //      insertarOrigen(plazaIndependencia, 'Plaza Independencia');
     }
 }
 
