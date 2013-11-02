@@ -85,7 +85,7 @@ $(function() {
             });
             //Clic en el botón ¿Donde estoy?
             $('#origenAutomatico').on('click', function() {
-                detectarUbicacion();
+                detectarUbicacion(true);
                 app.deshabilitarBtnMostrar();
             });
             //Clic en el botón 'Intercambiar Destino'

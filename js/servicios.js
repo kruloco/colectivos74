@@ -85,15 +85,16 @@ function cambiarValorAC(direccion, id, listview) {
 }
 
 ////Detecta la ubicación del usuario a través de W3C
+//Si el booleano recibido es TRUE: buscar por GPS. Sino busca por datos móviles
 //Si la encuentra, la escribe en el campo ORIGEN
 //Si no la encuentra, escribe en el campo origen la Plaza independencia
-function detectarUbicacion() {
+function detectarUbicacion(gps) {
     var browserSupportFlag = new Boolean();
     if (navigator.geolocation) {
         browserSupportFlag = true;
         navigator.geolocation.getCurrentPosition(onSuccess, onError,
-                {enableHighAccuracy: true, //GPS
-                    timeout: 30000});
+                {enableHighAccuracy: gps, //timeout: 60000
+                });
     } else {
         browserSupportFlag = false;
         errorNoGeolocation(browserSupportFlag);
@@ -108,7 +109,14 @@ function detectarUbicacion() {
     }
     function onError(error)
     {
-        errorNoGeolocation(browserSupportFlag);
+        //Si el GPS está desactivado
+        if (error.code === 2) {
+            mostrarModal('El GPS está descativado. Habilítelo o la búsqueda se realizará con menos presición', 'GPS Desactivado')
+            detectarUbicacion(false);
+        }
+        else {
+            errorNoGeolocation(browserSupportFlag);
+        }
     }
 
 //Si no puede geolocalizar, escribe la plaza independencia
@@ -121,7 +129,7 @@ function detectarUbicacion() {
             mostrarModal("Tu navegador no soporta Geolocalización. Te ubicamos en Mendoza/Plaza Independencia.");
         }
         $('#origen').val('Plaza Independencia, Mendoza, Argentina');
-  //      insertarOrigen(plazaIndependencia, 'Plaza Independencia');
+        //      insertarOrigen(plazaIndependencia, 'Plaza Independencia');
     }
 }
 
