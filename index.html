@@ -5,17 +5,17 @@
         <meta charset="utf-8"> 
         <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
         <link rel="stylesheet" href="css/colectivos.css" />
-        <link rel="stylesheet" href="css/jquery.mobile-1.2.0.min.css" />
+        <!--<link rel="stylesheet" href="css/jquery.mobile-1.2.0.min.css" />-->
+        <link rel="stylesheet" href="css/jquery.mobile-1.3.2.min.css" />
         <link rel="stylesheet" href="css/jqm-icon-pack-3.0.0-fa.css" />
         <script src="cordova.js"></script>
         <script src="http://maps.google.com/maps/api/js?libraries=places&sensor=true" type="text/javascript"></script>
-        <script src="js/jquery-1.7.2.min.js"></script>
+        <!--<script src="js/jquery-1.7.2.min.js"></script>-->
+        <script src="js/jquery-1.10.2.min.js"></script>
         <script src="js/init.js"></script>
-        <script src="js/jquery.mobile-1.2.0.min.js"></script>
+        <!--<script src="js/jquery.mobile-1.2.0.min.js"></script>-->
+        <script src="js/jquery.mobile-1.3.2.min.js"></script>
         <script src="js/funciones.js"></script>
-        <script src="js/mapa.js"></script>
-        <script src="js/servicios.js"></script>
-        <script src="js/distancias.js"></script>
     </head> 
     <body> 
         <div data-role="page" id="homePage">
@@ -76,6 +76,13 @@
 
         <!-- MAPA ---------------------------------------------------------- data-fullscreen="true" -->
         <div data-role="page" id="mapaPage" style="overflow: hidden">
+            <div data-role="panel" id="panelLinea" data-display="overlay" data-theme="a">
+                <div class="panel-content">
+                    <h3>Información sobre la Línea</h3>
+                    <p></p>
+                    <a href="#" data-rel="close" data-role="button" data-icon="delete" data-inline="true">Cerrar</a>
+                </div>
+            </div>
             <div data-role="header" data-position="fixed">
                 <a href="" data-rel="back" data-icon="back" class="ui-btn-right">Volver</a>
                 <h3 id="headMapa"></h3>
@@ -86,16 +93,16 @@
             <div data-role="footer" data-position="fixed" data-id="footernav" class="nav-glyphish-example">
                 <div data-role="navbar" data-iconpos="top" id="navbarMapaOrigen">
                     <ul>
-                        <li><a href="#origenPage" class="flag" data-icon="custom" id="btnOrigenPage">Origen</a></li>
-                        <li><a href="#grupoPage" class="navigation" data-icon="custom" id="btnListado">Grupos</a></li>
-                        <li><a href="#indicacionesPage" class="signpost" data-icon="custom" id="btnIndicacionesPage">Indicaciones</a></li>
+                        <li><a href="#origenPage" class="flag" data-icon="custom">Origen</a></li>
+                        <li><a href="#" class="network btnRastrear" data-icon="custom" >Rastrear</a></li>
+                        <li><a href="#indicacionesPage" class="signpost" data-icon="custom">Indicaciones</a></li>
                         <li><a href="#homePage" class="house" data-icon="custom">Inicio</a></li>
                     </ul>
                 </div>
                 <div data-role="navbar" data-iconpos="top" id="navbarMapa">
                     <ul>
-                        <li><a href="#origenPage" class="flag" data-icon="custom" id="btnOrigenPage">Origen</a></li>
-                        <li><a href="#grupoPage" class="navigation" data-icon="custom" id="btnListado">Grupos</a></li>
+                        <li><a href="#origenPage" class="flag" data-icon="custom">Origen</a></li>
+                        <li><a href="#grupoPage" class="navigation" data-icon="custom">Grupos</a></li>
                         <li><a href="#homePage"  class="house" data-icon="custom">Inicio</a></li>
                     </ul>
                 </div>
@@ -150,11 +157,13 @@
         </div>
 
         <!-- DIALOG ------------------------------------------------------------------ -->  
-        <div data-role="page" id="dialog">
+        <div data-role="page" id="dialog" data-close-btn="none">
             <div data-role="header">
                 <h1 id="dialogTitle"></h1>
             </div>    
-            <div data-role="content" id="dialogText">
+            <div data-role="content">
+                <div id="dialogText"></div>
+                <a href="#" data-role="button" data-rel="back" data-mini="false">Aceptar</a>
             </div>    
         </div>
         <!-- AYUDA ------------------------------------------------------------------ -->  

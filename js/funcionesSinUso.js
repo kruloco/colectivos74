@@ -169,3 +169,10 @@
 
 //validar Objeto vacío
 //Object.keys(nombre).length === 0
+
+
+//Lee la url actual y devuelve la cadena que le sigue al '='
+/*app.getAtributosUrl = function() {
+ var url = window.location.hash;
+ return url.split("=")[1];
+ };*/

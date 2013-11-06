@@ -98,3 +98,17 @@ body { height: 100%; margin: 0; padding: 0 }
 .navigation .ui-icon { 
     background: url("icons/navigation.png") no-repeat center whitesmoke !important;
 }
+
+.network .ui-icon { 
+    background: url("icons/network.png") no-repeat center whitesmoke !important;
+}
+
+/* Bajar los íconos del navbar (para el icon-pack) */
+#navbarMapa .ui-icon, #navbarMapaOrigen .ui-icon
+{top:18px !important;}
+
+/* Permitir salto de línea en listView (mas de un renglon)*/
+a.ui-link-inherit
+{white-space:normal !important}
+
+

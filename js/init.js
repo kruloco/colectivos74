@@ -10,8 +10,3 @@ $(document).on('mobileinit', function() {
     $.mobile.page.prototype.options.headerTheme = "b";
     $.mobile.page.prototype.options.footerTheme = "b";
 });
-
-//var dominio = "http://192.168.200.111/colectivos/";
-//var controlador = dominio + "controladores/";
-
-var controlador = "http://colectivo.site90.net/";
