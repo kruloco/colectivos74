@@ -1,18 +1,18 @@
-<?xml version='1.0' encoding='utf-8'?>
-<widget id="com.phonegap.colectivosMza" version="2.2.0" xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0">
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="com.phonegap.colectivosMza" version="2.0.0">
     <name>ColectivosMza</name>
     <description> Busca los recorridos de los colectivos. </description>
     <author email="manzurcarim@gmail.com" href="http://phonegap.com"> Carim Manzur </author>
 
-    <preference name="phonegap-version" value="3.0.0" />
-    <preference name="orientation" value="portrait" />
-    <preference name="target-device" value="universal" />
-    <preference name="fullscreen" value="false" />
-    <preference name="splashscreen" value="splash" />
+    <preference name="phonegap-version" value="3.0.0"/>
+    <preference name="orientation" value="portrait"/>
+    <preference name="target-device" value="universal"/>
+    <preference name="fullscreen" value="false"/>
+    <preference name="splashscreen" value="splash"/>
 
     <access origin="*"/>
-    <gap:platform name="android" />
-    <content src="index.html" />
+    <gap:platform name="android"/>
+    <content src="index.html"/>
     <!--<gap:splash src="icon2.png" />-->
     <!--<icon src="icon.png" />-->
 </widget>

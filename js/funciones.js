@@ -9,12 +9,12 @@ $(function() {
                 //Infowindow para Origen y destino
                 infoOrigen = new google.maps.InfoWindow(), infoDestino = new google.maps.InfoWindow(),
                 //Almacena el string grupo_id/parada_id del último recorrido consultado
-                cache = {recorrido: '', indicaciones: '', sesion: false, grupoId: ''},
-        //Objeto con los datos de la línea actual en uso.
-        //recorrido es un objeto Polyline. paradas es un array de Marker's.
-        //paradaDestino y paradaOrigen son objetos LatLng de las paradas más cercanas al origen y destino
-        lineaActual = {nombre: '', numero: '', grupo_nombre: '', grupo_numero: '',
-            recorrido: null, paradas: null, paradaOrigen: null, paradaDestino: null},
+                cache = {recorrido: '', indicaciones: '', sesion: false, grupoId: ''}, db = null,
+                //Objeto con los datos de la línea actual en uso.
+                //recorrido es un objeto Polyline. paradas es un array de Marker's.
+                //paradaDestino y paradaOrigen son objetos LatLng de las paradas más cercanas al origen y destino
+                lineaActual = {nombre: '', numero: '', grupo_nombre: '', grupo_numero: '',
+                    recorrido: null, paradas: null, paradaOrigen: null, paradaDestino: null},
         //Objeto para usar el Servicio Autocomplete
         autocompleteService = new google.maps.places.AutocompleteService(),
                 //Objeto para usar el Servicio Directions
@@ -28,8 +28,16 @@ $(function() {
 
         // Función principal
         app.init = function() {
-            document.addEventListener('deviceready', app.bindingsPG, false);
+            document.addEventListener('deviceready', app.deviceReady, false);
             app.bindings();
+
+            //Genero una DB colectivos si no existe
+            db = window.openDatabase("coz", "1.0", "Colectivos", 1024 * 1024 * 10);
+            //Verifica si la DB ya está poblada o si se acaba de crear
+            db.transaction(
+                    function(tx) {
+                        tx.executeSql('SELECT * FROM GRUPO', [], null, app.poblarDB);
+                    }, app.txError);
         };
 
         //Inicializa todos los EVENTOS de la página ---------------------------------------------------------------------
@@ -40,10 +48,13 @@ $(function() {
                 app.limpiarAutocomplete();
             });
             $("#grupoPage").on('pagebeforeshow', function() {
-                app.crearListadoGrupos();
+                if (cache.sesion === false) {
+                    cache.sesion = true;
+                    app.crearListadoGrupos();
+                }
             });
             //Cuando hago clic en un grupo, guardo ese id en data-grupo para capturarlo desde otro página
-            $("#grupoList").on('click', ".grupo", function() {
+            $("#gruposList").on('click', ".grupo", function() {
                 sessionStorage.grupoSeleccionado = $(this).attr("data-grupo");
             });
             //Cuando hago clic en una linea, guardo ese id en data-linea para capturarlo desde otro página
@@ -58,8 +69,12 @@ $(function() {
                 var grupoId = sessionStorage.grupoSeleccionado;
                 var paginaAnterior = data.prevPage.attr('id');
                 //Si vengo de la página mapaPage, es porque toqué el botón 'back' entonces no tengo que redibujar las líneas
-                if (grupoId && paginaAnterior !== 'mapaPage')
-                    app.crearListadoLineas(grupoId);
+                if (grupoId && paginaAnterior !== 'mapaPage') {
+                    if (cache.grupoId !== grupoId) {
+                        cache.grupoId = grupoId;
+                        app.crearListadoLineas(grupoId);
+                    }
+                }
             });
             //Carga el mapa sólo una vez y quita el handler
             $("#mapaPage").one("pageshow", function() {
@@ -170,37 +185,16 @@ $(function() {
             });
         };
 
-//Manejador de eventos de PhoneGap ---------------------------------------------------------------------------------------
-        app.bindingsPG = function()
+// PHONEGAP -------------------------------------------------------------------------------------------------------------
+        app.deviceReady = function()
         {
             navigator.splashscreen.show();
-
+            //Setea celular.estado, que sirve para saber durante el transcurso de la aplicación si hay accesso a internet
             celular.conexion = app.getConexion();
             if ((celular.conexion !== 'Ninguna') && (celular.conexion !== 'Desconocida')) {
                 celular.estado = true;
             }
-            celular.plataforma = device.platform;
-            if ((celular.plataforma === "Android") || (celular.plataforma === "3.0.0.100")) {
-                document.addEventListener("online", app.isOnline, false);
-                document.addEventListener("offline", app.isOffline, false);
-                document.addEventListener("menubutton", app.onMenuButton, false);
-                document.addEventListener("searchbutton", app.onSearchButton, false);
-            }
-//            document.addEventListener("pause", app.cerrarAplicacion, false);
-
-        };
-
-        app.onMenuButton = function() {
-            alert('botón desactivado');
-        };
-        app.onSearchButton = function() {
-            alert('botón desactivado');
-        };
-        app.isOnline = function() {
-            celular.estado = true;
-        };
-        app.isOffline = function() {
-            celular.estado = false;
+            app.bindingsPG();
         };
 
         //Devuelve el tipo de conexion del dispositivo
@@ -215,12 +209,72 @@ $(function() {
             estados[Connection.CELL_3G] = '3G';
             estados[Connection.CELL_4G] = '4G';
             estados[Connection.NONE] = 'Ninguna';
-
             return estados[estadoRed];
         };
 
         app.cerrarAplicacion = function() {
             navigator.app.exitApp();
+        };
+
+// SQLITE -----------------------------------------------------------------------------------------------------------
+        // Callback Transaccion - Error
+        app.txError = function(tx, err) {
+            alert("Error Transacción: " + err.code);
+        };
+
+        //Pobla la DB
+        app.poblarDB = function(tx, err) {
+            //Si no existe la tabla entonces poblo la DB con todos los datos
+            if (err.code === 5)
+            {
+                app.cargarLoader(true);
+                app.cargarArchivoenDB(tx, 'sqlite/estructura.sql');
+                app.cargarArchivoenDB(tx, 'sqlite/datos.sql');
+                app.cargarLoader(false);
+                return false; //Sin Rollback
+            }
+            return true; //Rollback
+        };
+
+        //Recibe un archivo con consultas SQLite y las ejecuta una por una
+        app.cargarArchivoenDB = function(tx, archivo) {
+            $.ajax({
+                type: "GET",
+                url: archivo,
+                dataType: "text",
+                async: false
+            })
+                    .done(function(data) {
+                        var consulta = data.split(';');
+                        var total = consulta.length - 1;
+                        for (var i = 0; i < total; i++) {
+                            tx.executeSql(consulta[i]);
+                        }
+                    });
+        };
+
+//Manejador de eventos de PhoneGap ---------------------------------------------------------------------------------------
+        app.bindingsPG = function()
+        {
+            celular.plataforma = device.platform;
+            //Desactivo los botones BUSCAR y MENU de Android o Blackberry
+            if ((celular.plataforma === "Android") || (celular.plataforma === "3.0.0.100")) {
+                document.addEventListener("menubutton", function() {
+                    alert('botón desactivado');
+                }, false);
+                document.addEventListener("searchbutton", function() {
+                    alert('botón desactivado');
+                }, false);
+            }
+            //Cuando el dispositivo tiene conexión a internet
+            document.addEventListener("online", function() {
+                celular.estado = true;
+            }, false);
+            //Cuando el dispositivo pierde la conexión a internet
+            document.addEventListener("offline", function() {
+                celular.estado = false;
+            }, false);
+//            document.addEventListener("pause", app.cerrarAplicacion, false);
         };
 
 // FUNCIONES GENERALES -------------------------------------------------------------------------------------------------
@@ -255,35 +309,35 @@ $(function() {
 
         //Genera un listView dinámico de TODOS los Grupos/Recorridos
         app.crearListadoGrupos = function() {
-            if (cache.sesion === false) {
-                cache.sesion = true;
-                var html = '', li = "<li class='grupo' data-grupo='ID'><a href='#lineasPage'><div id='cuadradito'>NUMERO</div>NOMBRE</a><span class='ui-li-count'>CANTIDAD</span></li>";
-                //Obtengo el array de grupos
-                $.getJSON("json/grupos.json", function(arrayGrupos) {
-                    var cantidad = arrayGrupos.length;
-                    $.each(arrayGrupos, function(index, data) {
-                        html += li.replace(/NOMBRE/g, data.nombre).replace(/NUMERO/g, data.numero).replace(/CANTIDAD/g, data.cantLineas).replace(/ID/g, data.grupo_id);
-                        if (index === cantidad - 1)
-                            $('#grupoList').html(html).listview('refresh');
+            var html = '', li = "<li class='grupo' data-grupo='ID'><a href='#lineasPage'><div id='cuadradito'>NUMERO</div>NOMBRE</a><span class='ui-li-count'>CANTIDAD</span></li>", row;
+            //Hago una consulta y obtengo el array de grupos
+            db.transaction(
+                    function(tx) {
+                        tx.executeSql("SELECT COUNT( * ) AS cantLineas, grupo.* FROM grupo JOIN linea_grupo USING ( grupo_id ) GROUP BY grupo_id", [],
+                                function(tx, resultSet) {
+                                    for (var i = 0, max = resultSet.rows.length; i < max; i++) {
+                                        row = resultSet.rows.item(i);
+                                        html += li.replace(/NOMBRE/g, row.nombre).replace(/NUMERO/g, row.numero).replace(/CANTIDAD/g, row.cantLineas).replace(/ID/g, row.grupo_id);
+                                    }
+                                    $('#gruposList').html(html).listview('refresh');
+                                });
                     });
-                });
-            }
         };
 
         //Recibe ID de Grupo y Genera un listView dinámico de sus lineas
         app.crearListadoLineas = function(idGrupo) {
-            if (cache.grupoId !== idGrupo) {
-                cache.grupoId = idGrupo;
-                var html = '', li = "<li class='linea' data-linea='LINEA' data-grupo='GRUPO'><a href='#mapaPage'><div id='cuadradito'>NUMERO</div>NOMBRE</a></li>";
-                $.getJSON("json/" + idGrupo + "/lineas.json", function(arrayLineas) {
-                    var cantidad = arrayLineas.length;
-                    $.each(arrayLineas, function(index, data) {
-                        html += li.replace(/NOMBRE/g, data.nombre).replace(/NUMERO/g, data.numero).replace(/GRUPO/g, idGrupo).replace(/LINEA/g, data.linea_id);
-                        if (index === cantidad - 1)
-                            $('#lineasList').html(html).listview('refresh');
+            var html = '', li = "<li class='linea' data-linea='LINEA' data-grupo='GRUPO'><a href='#mapaPage'><div id='cuadradito'>NUMERO</div>NOMBRE</a></li>", row;
+            db.transaction(
+                    function(tx) {
+                        tx.executeSql("SELECT * FROM linea JOIN linea_grupo USING ( linea_id ) WHERE grupo_id=?", [idGrupo],
+                                function(tx, resultSet) {
+                                    for (var i = 0, max = resultSet.rows.length; i < max; i++) {
+                                        row = resultSet.rows.item(i);
+                                        html += li.replace(/NOMBRE/g, row.nombre).replace(/NUMERO/g, row.numero).replace(/GRUPO/g, row.grupo_id).replace(/LINEA/g, row.linea_id);
+                                    }
+                                    $('#lineasList').html(html).listview('refresh');
+                                });
                     });
-                });
-            }
         };
 
         //Recibe un array de los mejores recorridos [json: {numero,nombre,grupo,etc}] y genera un listView dinámico
@@ -534,21 +588,58 @@ $(function() {
 //Recibe las coordenadas de origen y destino y busca en la DB las paradas que pasen por ambos
 //Genera un array de Lineas listo para mostrar en el listView y se lo pasa a app.crearListadoRecorridos()
         app.listarLineasCercanas = function(cordOrigen, cordDestino) {
+            var filas = 0, metros = 500;
             app.cargarLoader(true);
-            app.getJSONremoto(controlador + "controladorParada.php",
-                    {
-                        Olat: cordOrigen.lat(),
-                        Olng: cordOrigen.lng(),
-                        Dlat: cordDestino.lat(),
-                        Dlng: cordDestino.lng()
-                    }, function(data) {
-                if (data.status === 'SinOrigen')
-                    app.mostrarModal('No hay paradas cerca del Origen', 'Información');
-                else if (data.status === 'SinDestino')
-                    app.mostrarModal('No hay paradas cerca del Destino', 'Información');
-                else
-                    app.crearListadoRecorridos(data.lineas);
+
+            //while (filas === 0 && metros < 1000) {
+            app.algoritmoParadasCercanas(cordOrigen, cordDestino);
+            //}
+
+            /*  app.getJSONremoto(controlador + "controladorParada.php",
+             {
+             Olat: cordOrigen.lat(),
+             Olng: cordOrigen.lng(),
+             Dlat: cordDestino.lat(),
+             Dlng: cordDestino.lng()
+             }, function(data) {
+             if (data.status === 'SinOrigen')
+             app.mostrarModal('No hay paradas cerca del Origen', 'Información');
+             else if (data.status === 'SinDestino')
+             app.mostrarModal('No hay paradas cerca del Destino', 'Información');
+             else
+             app.crearListadoRecorridos(data.lineas);
+             });*/
+        };
+
+        app.algoritmoParadasCercanas = function(cordOrigen, cordDestino) {
+            var filas = 0, metros = 500, algoritmo = "SELECT linea.linea_id, grupo_id, linea.nombre, linea.numero, \n\
+            ROUND( 1000 * ( acos( sin( radians(?) ) * sin( radians( latitud ) ) + cos( radians(?) ) * cos( radians( latitud ) ) * cos( radians(?) - radians( longitud ) ) ) *6378 ) , 6 ) AS distancia \n\
+            FROM parada JOIN linea_parada USING ( parada_id ) JOIN linea USING ( linea_id ) JOIN linea_grupo USING ( linea_id ) \n\
+            JOIN grupo USING ( grupo_id ) GROUP BY linea_id HAVING distancia < ? ORDER BY linea_id ASC";
+
+//( acos( sin( radians(?) )   lat
+// sin( radians( latitud ) )  columna lat sin
+//cos( radians(?) ) lat
+// cos( radians( latitud ) )  columna lat cos
+// cos( radians(?) - radians( longitud ) ) ) lng   -   COS(A-B) = COS A * COS B - SEN A * SEN B    (COS lng - SEN lng)
+
+            db.transaction(function(tx) {
+                tx.executeSql(algoritmo, [cordOrigen.lat(), cordOrigen.lat(), cordOrigen.lng(), metros], encontreParadas, errorParadas);
             });
+
+            function encontreParadas(tx, resultSet) {
+                console.log(resultSet.rows.length);
+            }
+            
+            function errorParadas(tx, err) {
+                console.log(err.message);
+            }
+
+            /*var algoritmo = "SELECT linea_id, grupo_id, linea.nombre, linea.numero, \n\
+             min( ROUND( 1000 * ( acos( sin( radians($lat) ) * sin( radians( latitud ) ) + cos( radians($lat) ) * cos( radians( latitud ) ) * cos( radians($lng) - radians( longitud ) ) ) *6378 ) , 6 ) ) AS distancia \n\
+             FROM parada JOIN linea_parada USING ( parada_id ) JOIN linea USING ( linea_id ) JOIN linea_grupo USING ( linea_id ) \n\
+             JOIN grupo USING ( grupo_id ) GROUP BY linea_id HAVING distancia < $metros ORDER BY linea_id ASC";*/
+
         };
 
 //Recibe un array de paradas [json{lat,lng}] 

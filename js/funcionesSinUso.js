@@ -176,3 +176,43 @@
  var url = window.location.hash;
  return url.split("=")[1];
  };*/
+
+//Lee un archivo json y genera un listView
+/*$.getJSON("json/grupos.json", function(arrayGrupos) {
+ var cantidad = arrayGrupos.length;
+ $.each(arrayGrupos, function(index, data) {
+ html += li.replace(/NOMBRE/g, data.nombre).replace(/NUMERO/g, data.numero).replace(/CANTIDAD/g, data.cantLineas).replace(/ID/g, data.grupo_id);
+ if (index === cantidad - 1)
+ $('#grupoList').html(html).listview('refresh');
+ });
+ });
+ 
+ $.getJSON("json/" + idGrupo + "/lineas.json", function(arrayLineas) {
+ var cantidad = arrayLineas.length;
+ $.each(arrayLineas, function(index, data) {
+ html += li.replace(/NOMBRE/g, data.nombre).replace(/NUMERO/g, data.numero).replace(/GRUPO/g, idGrupo).replace(/LINEA/g, data.linea_id);
+ if (index === cantidad - 1)
+ $('#lineasList').html(html).listview('refresh');
+ });
+ });
+ **/
+
+//Recibe las coordenadas de origen y destino y busca en la DB las paradas que pasen por ambos
+//Genera un array de Lineas listo para mostrar en el listView y se lo pasa a app.crearListadoRecorridos()
+/*    app.listarLineasCercanas = function(cordOrigen, cordDestino) {
+ app.cargarLoader(true);
+ app.getJSONremoto(controlador + "controladorParada.php",
+ {
+ Olat: cordOrigen.lat(),
+ Olng: cordOrigen.lng(),
+ Dlat: cordDestino.lat(),
+ Dlng: cordDestino.lng()
+ }, function(data) {
+ if (data.status === 'SinOrigen')
+ app.mostrarModal('No hay paradas cerca del Origen', 'Información');
+ else if (data.status === 'SinDestino')
+ app.mostrarModal('No hay paradas cerca del Destino', 'Información');
+ else
+ app.crearListadoRecorridos(data.lineas);
+ });
+ };*/
