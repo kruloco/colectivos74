@@ -6,6 +6,7 @@ $(function() {
         //VARIABLES GLOBALES ---------------------------------------------------------------------------------------------
         var celular = {'estado': true, 'conexion': '', 'plataforma': ''}, //CAMBIAR ESTADO:TRUE PARA DESHABILITAR PHONEGAP
         mapa = null, origen = null, destino = null, colectivo = null,
+                paradasOrigen = [], paradasDestino = [], mejoresRecorridos = [],
                 //Infowindow para Origen y destino
                 infoOrigen = new google.maps.InfoWindow(), infoDestino = new google.maps.InfoWindow(),
                 //Almacena el string grupo_id/parada_id del último recorrido consultado
@@ -32,12 +33,16 @@ $(function() {
             app.bindings();
 
             //Genero una DB colectivos si no existe
-            db = window.openDatabase("coz", "1.0", "Colectivos", 1024 * 1024 * 10);
+            db = window.openDatabase("colectivosAPP", "1.0", "Colectivos", 1024 * 1024 * 10);
             //Verifica si la DB ya está poblada o si se acaba de crear
-            db.transaction(
-                    function(tx) {
-                        tx.executeSql('SELECT * FROM GRUPO', [], null, app.poblarDB);
-                    }, app.txError);
+            db.transaction(function(tx) {
+                tx.executeSql('SELECT * FROM GRUPO', [], function(tx) {
+                    console.log('query select OK');
+                }, app.sqlDBVacia);
+            },
+                    app.txError, function() {
+                        console.log('trans principal OK');
+                    });
         };
 
         //Inicializa todos los EVENTOS de la página ---------------------------------------------------------------------
@@ -60,16 +65,15 @@ $(function() {
             //Cuando hago clic en una linea, guardo ese id en data-linea para capturarlo desde otro página
             $("#lineasList").on('click', ".linea", function() {
                 sessionStorage.lineaSeleccionada = $(this).attr("data-linea");
-                sessionStorage.grupoSeleccionado = $(this).attr("data-grupo");
 
             });
             //Cuando se carga el listado de lineas
             $("#lineasPage").on("pagebeforeshow", function(e, data) {
-//                var grupoId = $('#grupoSeleccionado').attr('data-grupo');
                 var grupoId = sessionStorage.grupoSeleccionado;
                 var paginaAnterior = data.prevPage.attr('id');
-                //Si vengo de la página mapaPage, es porque toqué el botón 'back' entonces no tengo que redibujar las líneas
-                if (grupoId && paginaAnterior !== 'mapaPage') {
+                //Si vengo de la página grupoPage dibujo las líneas del grupo seleccionado
+                if (grupoId && paginaAnterior === 'grupoPage') {
+                    //CACHE: Si elijo un grupo y luego toco BACK y vuelvo a elegir el mismo grupo, no redibujo las líneas
                     if (cache.grupoId !== grupoId) {
                         cache.grupoId = grupoId;
                         app.crearListadoLineas(grupoId);
@@ -86,14 +90,13 @@ $(function() {
                     app.modificarNavBar();
                 },
                 "pageshow": function(e) {
-                    var archivo = sessionStorage.grupoSeleccionado + "/" + sessionStorage.lineaSeleccionada;
-                    app.dibujarRecorrido(archivo);
+                    var linea = sessionStorage.lineaSeleccionada;
+                    app.dibujarRecorrido(linea);
                 }
             });
             //Cuando se carga la página de Indicaciones
             $("#indicacionesPage").on('pagebeforeshow', function() {
-                var archivo = sessionStorage.grupoSeleccionado + "/" + sessionStorage.lineaSeleccionada;
-                app.generarIndicaciones(archivo);
+                app.generarIndicaciones(sessionStorage.lineaSeleccionada);
             });
             //Cuando hago clic sobre el header del mapa, se abre un modal con los datos
             $('#headMapa').on('click', function() {
@@ -217,13 +220,19 @@ $(function() {
         };
 
 // SQLITE -----------------------------------------------------------------------------------------------------------
-        // Callback Transaccion - Error
+        // RollBack Transaccion - Error
         app.txError = function(tx, err) {
-            alert("Error Transacción: " + err.code);
+            alert("Error de Base de Datos: " + err.code);
         };
 
-        //Pobla la DB
-        app.poblarDB = function(tx, err) {
+        // RollBack Cnsulta - Error
+        app.consultaError = function(tx, err) {
+            alert("Error de Consulta: " + err.code + err.message);
+            return true;
+        };
+
+        //Si NO existe la DB
+        app.sqlDBVacia = function(tx, err) {
             //Si no existe la tabla entonces poblo la DB con todos los datos
             if (err.code === 5)
             {
@@ -252,6 +261,251 @@ $(function() {
                         }
                     });
         };
+
+        //Recibe las coordenadas de origen y destino y busca en la DB las paradas que pasen por ambos
+//Genera un array de Lineas listo para mostrar en el listView y se lo pasa a app.crearListadoMejoresRecorridos()
+        app.listarLineasCercanas = function(cordOrigen, cordDestino) {
+            app.cargarLoader(true);
+
+            //Busca las paradas cercanas
+            db.transaction(function(tx) {
+                app.buscarParadasCercanas(tx, cordOrigen.lat(), cordOrigen.lng(), 'origen');
+            }, app.txError, function() {
+                console.log('trans query ORIGEN OK');
+                //Si hay paradas en el origen, busco en el destino
+                if (paradasOrigen)
+                {
+                    db.transaction(function(tx) {
+                        app.buscarParadasCercanas(tx, cordDestino.lat(), cordDestino.lng(), 'destino');
+                    }, app.txError, function() {
+                        console.log('trans query DESTINO OK');
+                        //Si hay paradas en el destino, hago el algoritmo para encontrar los recorridos
+                        if (paradasDestino)
+                        {
+                            //Busco Lineas en comun entre los dos arrays
+                            var hayLineas = app.buscarLineasEnComun(paradasOrigen, paradasDestino);
+                            (hayLineas) ? app.ordenarLineasPorTiempo() : app.mostrarModal('No hay Recorridos', 'Información');
+                        }
+                        else {
+                            app.mostrarModal('No hay paradas cerca del Destino', 'Información');
+                        }
+                    });
+                }
+                else {
+                    app.mostrarModal('No hay paradas cerca del Origen', 'Información');
+                }
+            });
+        };
+
+        app.buscarParadasCercanas = function(tx, lat, lng, lugar) {
+            var lng_rad = app.toRad(lng);
+            var lat_rad = app.toRad(lat);
+            var sen_lat = Math.sin(lat_rad);
+            var cos_lat = Math.cos(lat_rad);
+            var sen_lng = Math.sin(lng_rad);
+            var cos_lng = Math.cos(lng_rad);
+            var radio = Math.cos(0.5 / 6378);
+            var query = "SELECT linea.linea_id, parada.parada_id, parada.latitud, parada.longitud, \n\
+        ( ? * lat_sen + ? * lat_cos* ( ? * lng_cos + ? * lng_sen ) ) AS distancia \n\
+        FROM parada JOIN linea_parada USING ( parada_id ) JOIN linea USING ( linea_id ) \n\
+        WHERE distancia > ? ORDER BY linea.linea_id ASC, distancia DESC;";
+
+            tx.executeSql(query, [sen_lat, cos_lat, cos_lng, sen_lng, radio],
+                    function(tx, resultSet) {
+                        app.paradasOk(tx, resultSet, sen_lat, cos_lat, cos_lng, sen_lng, radio, query, lugar);
+                    }, app.paradasError);
+        };
+
+        app.paradasOk = function(tx, resultSet, sen_lat, cos_lat, cos_lng, sen_lng, radio, query, lugar) {
+            var cantidad = resultSet.rows.length, radioNuevo, radioKM = Math.acos(radio) * 6378;
+            console.debug('CANTIDAD ' + lugar + ': ' + cantidad);
+            //Si no hay resultados, repito la consula con un radio mayor
+            console.log('radio KM: ' + radioKM);
+            if (cantidad === 0 && radioKM < 1.3)
+            {
+                //Aumento el radio en 100 metros y luego lo convierto
+                radioKM += 0.1;
+                radioNuevo = Math.cos(radioKM / 6378);
+                tx.executeSql(query, [sen_lat, cos_lat, cos_lng, sen_lng, radioNuevo], function(tx, resultSet) {
+                    app.paradasOk(tx, resultSet, sen_lat, cos_lat, cos_lng, sen_lng, radioNuevo, query, lugar);
+                }, app.paradasError);
+            }
+            else
+            {
+                //Si hay resultados los guardo en arrays globales
+                if (cantidad !== 0) {
+                    var arrayObjetos = [];
+                    //limpio el array para dejar solamente una linea_id con una sola parada_id (la de menor distancia)
+                    arrayObjetos.push(resultSet.rows.item(0));
+                    for (var i = 1; i < cantidad; i++) {
+                        if (resultSet.rows.item(i - 1).linea_id !== resultSet.rows.item(i).linea_id) {
+                            arrayObjetos.push(resultSet.rows.item(i));
+                        }
+                    }
+                    console.debug('CANTIDAD LIMPIA ' + lugar + ': ' + arrayObjetos.length);
+                    if (lugar === 'origen') {
+                        paradasOrigen = arrayObjetos;
+                    }
+                    else if (lugar === 'destino') {
+                        paradasDestino = arrayObjetos;
+                    }
+                }
+                //Si no hay resultados anulo el array
+                else {
+                    if (lugar === 'origen') {
+                        paradasOrigen = null;
+                    }
+                    else if (lugar === 'destino') {
+                        paradasDestino = null;
+                    }
+                }
+            }
+
+        };
+
+        app.paradasError = function(tx, err) {
+            console.log("Error de Paradas: " + err.code + err.message);
+            return true;
+        };
+
+        //Recibe 2 Arrays, busca las líneas que tienen en común y carga el array global mejoresRecorridos con esas líneas
+        //Si no econtró lineas en comun devuelve false, sino true.
+        app.buscarLineasEnComun = function(arrayOrigen, arrayDestino)
+        {
+            var encontrada, objetoTemp = {};
+            mejoresRecorridos = [];
+
+            for (var i = 0, max = arrayOrigen.length; i < max; i++) {
+//                console.log(arrayOrigen[i]);
+                encontrada = arrayDestino.busquedaBinaria(arrayOrigen[i]['linea_id']);
+                //Si la línea es común a ambos arrays, la inserta en el nuevo Array
+                if (encontrada !== -1) {
+                    objetoTemp = {
+                        linea_id: arrayOrigen[i].linea_id,
+                        paradaOrigen: {
+                            parada_id: arrayOrigen[i].parada_id,
+                            lat: arrayOrigen[i].latitud,
+                            lng: arrayOrigen[i].longitud
+                        },
+                        paradaDestino: {
+                            parada_id: arrayDestino[encontrada]['parada_id'],
+                            lat: arrayDestino[encontrada].latitud,
+                            lng: arrayDestino[encontrada].longitud
+                        },
+                        distancia: Math.acos(arrayOrigen[i]['distancia']) * 6378000 //METROS
+                    };
+                    mejoresRecorridos.push(objetoTemp);
+                }
+            }
+            console.log('CANTIDAD EN COMUN: ' + mejoresRecorridos.length);
+
+            if (mejoresRecorridos.length > 0)
+                return true;
+            return false;
+        };
+
+
+//Ordena el array global mejoresRecorridos por tiempo de menor a mayor
+        app.ordenarLineasPorTiempo = function() {
+            db.transaction(
+                    function(tx) {
+                        app.traerRecorridoDb(tx, 0);
+                    },
+                    null, function() {
+                        //ORDENO el array por tiempo ASC y creo el listview
+                        app.metodoBurbujaTiempo(mejoresRecorridos);
+                        app.crearListadoMejoresRecorridos(mejoresRecorridos);
+                    });
+
+        };
+
+        //Hace una consulta a la DB y crea la polilinea que representa al recorrido
+        //También carga en la variable global mejoresRecorridos el nombre y numero de la linea
+        app.traerRecorridoDb = function(tx, indice) {
+            var recorrido = [], recorridoAcotado = [], distanciaColectivo = 0, tiempoColectivo = 0, row = {},
+                    mejorRecorrido = mejoresRecorridos[indice],
+                    trazaRuta = {
+                        path: null,
+                        strokeColor: "red",
+                        stokeOpacity: 1,
+                        strokeWeight: 4,
+                        clickable: false
+                    };
+//Consulto por linea_id y traigo el nombre y numero de la linea para mostrar en el listview
+            tx.executeSql("SELECT nombre, numero, linea_id FROM linea WHERE linea_id=?", [mejorRecorrido.linea_id],
+                    function(tx, resultSet) {
+                        row = resultSet.rows.item(0);
+                        mejorRecorrido.nombre = row.nombre;
+                        mejorRecorrido.numero = row.numero;
+                    }
+            , app.consultaError);
+
+            //Consulto por linea_id y traigo el recorrido para calcular la distancia/tiempo
+            tx.executeSql("SELECT latitud AS lat, longitud AS lng FROM recorrido WHERE linea_id=?", [mejorRecorrido.linea_id],
+                    function(tx, resultSet) {
+
+                        for (var j = 0, max = resultSet.rows.length; j < max; j++) {
+                            row = resultSet.rows.item(j);
+                            recorrido.push(app.convertirLatLng(row));
+                        }
+                        trazaRuta.path = recorrido;
+                        recorridoAcotado = app.acotarPolilinea(new google.maps.Polyline(trazaRuta), app.convertirLatLng(mejorRecorrido.paradaOrigen), app.convertirLatLng(mejorRecorrido.paradaDestino));
+                        //Calcula la distancia en KM de la polilínea acotada
+                        distanciaColectivo = (app.calcularDistanciaPolilinea(recorridoAcotado));
+                        //Calcula el tiempo de recorrido del colectivo sobre esa polilínea a 50km/h
+                        tiempoColectivo = Math.round((distanciaColectivo * 60) / 50);
+                        mejorRecorrido.distanciaColectivo = distanciaColectivo;
+                        mejorRecorrido.tiempoColectivo = app.minAHoras(tiempoColectivo);
+                        //console.debug(arrayNuevo[i]);
+                        //Esta es la recursividad para no hacer un FOR con consultas
+                        if (mejoresRecorridos.length - 1 > indice) {
+                            app.traerRecorridoDb(tx, ++indice);
+                        }
+                    }, app.consultaError
+                    );
+        };
+
+
+
+//Método de la Burbuja para ordenar un array por TiempoColectivo
+        app.metodoBurbujaTiempo = function(array) {
+            var cantidad = array.length, temp;
+            for (var vuelta = 1; vuelta < cantidad; vuelta++) {
+                for (var i = 0; i < (cantidad - vuelta); i++) {
+                    if (array[i].tiempoColectivo > array[i + 1].tiempoColectivo) {
+                        temp = array[i];
+                        array[i] = array[i + 1];
+                        array[i + 1] = temp;
+                    }
+                }
+            }
+            return array;
+        };
+
+        //Búsqueda binaria adaptada para 'linea_id'
+//Devuelve TRUE si encuentra el elemento
+        app.binaryIndexOf = function(searchElement) {
+            'use strict';
+            var minIndex = 0, maxIndex = this.length - 1, currentIndex, currentElement;
+
+            while (minIndex <= maxIndex) {
+                currentIndex = (minIndex + maxIndex) / 2 | 0;
+                currentElement = this[currentIndex]['linea_id'];
+
+                if (currentElement < searchElement) {
+                    minIndex = currentIndex + 1;
+                }
+                else if (currentElement > searchElement) {
+                    maxIndex = currentIndex - 1;
+                }
+                else {
+                    return currentIndex;
+                }
+            }
+            return -1;
+        };
+
+        Array.prototype.busquedaBinaria = app.binaryIndexOf;
 
 //Manejador de eventos de PhoneGap ---------------------------------------------------------------------------------------
         app.bindingsPG = function()
@@ -340,30 +594,29 @@ $(function() {
                     });
         };
 
-        //Recibe un array de los mejores recorridos [json: {numero,nombre,grupo,etc}] y genera un listView dinámico
-        app.crearListadoRecorridos = function(arrayLineas) {
-            var html = '', li = "<li class='linea' data-linea='LINEA' data-grupo='GRUPO'><a href='#mapaPage'><div id='cuadradito'>NUMERO</div>NOMBRE</a></li>";
-            $.mobile.changePage("#lineasPage");
+        //Recibe un array de los mejores recorridos y genera un listView dinámico
+        app.crearListadoMejoresRecorridos = function(arrayLineas) {
+            var html = '', li = "<li class='linea' data-linea='LINEA'><a href='#mapaPage'><div id='cuadradito'>NUMERO</div>NOMBRE</a><span class='ui-li-count'>TIEMPO</span></li>";
             $.each(arrayLineas, function(index, data) {
-                html += li.replace(/NOMBRE/g, data.nombre).replace(/NUMERO/g, data.numero).replace(/GRUPO/g, data.grupo_id).replace(/LINEA/g, data.linea_id);
+                html += li.replace(/NOMBRE/g, data.nombre).replace(/NUMERO/g, data.numero).replace(/LINEA/g, data.linea_id).replace(/TIEMPO/g, data.tiempoColectivo + ' hs');
             });
+            $.mobile.changePage("#lineasPage");
             $('#lineasList').html(html).listview('refresh');
         };
 
         //Dibuja el ListView de Indicaciones. Hace todos los cálculos necesarios.
-        app.generarIndicaciones = function(nombreArchivo) {
-            if (nombreArchivo !== cache.indicaciones) {
+        app.generarIndicaciones = function(lineaId) {
+            if (lineaId !== cache.indicaciones) {
                 app.cargarLoader(true);
-                cache.indicaciones = nombreArchivo;
+                cache.indicaciones = lineaId;
 
                 //Corta la Polilinea desde la paradaOrigen hasta paradaDestino
-                var recorridoAcotado = app.acotarPolilinea(lineaActual.recorrido),
+                var recorridoAcotado = app.acotarPolilinea(lineaActual.recorrido, lineaActual.paradaOrigen, lineaActual.paradaDestino),
                         //Calcula la distancia en KM de la polilínea acotada
                         distanciaColectivo = (app.calcularDistanciaPolilinea(recorridoAcotado)),
                         //Calcula el tiempo de recorrido del colectivo sobre esa polilínea a 50km/h
                         tiempoColectivo = Math.round((distanciaColectivo * 60) / 50),
                         distanciaTotal = '', tiempoTotal = '';
-
                 //Usa Directions para calcular la ruta desde origen->paradaOrigen; paradaDestino->destino
                 app.calcularRuta(origen.position, lineaActual.paradaOrigen, function(ruta) {
                     $('#LDindicaciones1').html('Camina hasta ' + ruta.destino + '.<br>Distancia: ' + ruta.distancia + ' km. Tiempo: ' + ruta.duracion + ' min.');
@@ -522,53 +775,73 @@ $(function() {
             return marc;
         };
 
-//Recibe un archivo JSON (grupo_id/linea_id) y dibuja el recorrido y paradas en el mapa
+//Recibe un id de linea y dibuja el recorrido y paradas en el mapa
 //Guarda la polilínea y las paradas en las variable global lineaActual
-        app.dibujarRecorrido = function(nombreArchivo) {
-            var parada = null, recorrido = [], arrayParadas = [], latlng = null;
-            //Si está en la caché, no vuelvo a dibujar el recorrido
-            if (nombreArchivo !== cache.recorrido) {
-                cache.recorrido = nombreArchivo;
-                $.getJSON("json/" + nombreArchivo + ".json", function(data) {
-                    //Guardo las varibles globales y Escribo la línea del colectivo en el Header del Mapa
-                    lineaActual.nombre = data.nombre;
-                    lineaActual.numero = data.numero;
-                    lineaActual.grupo_numero = data.grupo_numero;
-                    lineaActual.grupo_nombre = data.grupo_nombre;
-                    $('#headMapa').html(data.numero + ' ' + data.nombre);
-
-                    $.each(data.recorrido, function(index, item) {
-                        recorrido.push(app.convertirLatLng(item));
-                        // app.insertarMarcador(new google.maps.LatLng(item.lat, item.lng),'', "accesdenied.png",mapa);
-                    });
-                    var trazaRuta = {
+        app.dibujarRecorrido = function(lineaId) {
+            var parada = null, recorrido = [], arrayParadas = [], latlng = null, row = null,
+                    trazaRuta = {
                         path: recorrido,
                         strokeColor: "red",
                         stokeOpacity: 1,
                         strokeWeight: 4,
                         clickable: false
                     };
-                    app.vaciarRecorridos();
-                    lineaActual.recorrido = new google.maps.Polyline(trazaRuta);
-                    lineaActual.recorrido.setMap(mapa);
-                    //Inserto los marcadores de las paradas
-                    $.each(data.paradas, function(index, item) {
-                        latlng = app.convertirLatLng(item);
-                        arrayParadas.push(latlng);
-                        parada = app.insertarMarcador(latlng, '', "busstop.png", mapa);
-                        parada.clickable = false;
-                        lineaActual.paradas.push(parada);
-                    });
-                    //Si todavía no definen el origen, centro el mapa en alguna parada
-                    if (!origen)
-                        mapa.setCenter(parada.position);
-                    //Si está definido el origen, centro el mapa ahí y hago rebotar las paradas cercanas
-                    else
-                    {
-                        mapa.setCenter(origen.position);
-                        app.generarParadasCercanas(arrayParadas);
-                    }
-                });
+            //Si está en la caché, no vuelvo a dibujar el recorrido
+            if (lineaId !== cache.recorrido) {
+                cache.recorrido = lineaId;
+
+                //Busca en la DB la polilinea y la guarda en la variable global
+                db.transaction(function(tx) {
+                    tx.executeSql('SELECT latitud AS lat, longitud AS lng FROM recorrido WHERE linea_id=?', [lineaId], function(tx, resultSet) {
+                        for (var i = 0, max = resultSet.rows.length; i < max; i++) {
+                            row = resultSet.rows.item(i);
+                            recorrido.push(app.convertirLatLng(row));
+                            // app.insertarMarcador(new google.maps.LatLng(item.lat, item.lng),'', "accesdenied.png",mapa);
+                        }
+                    }, app.consultaError);
+                },
+                        app.txError, function() {
+                            console.log('polilinea OK');
+                            //Busca en la DB las paradas y las guarda en la variable global
+                            db.transaction(function(tx) {
+                                trazaRuta.path = recorrido;
+                                app.vaciarRecorridos();
+                                lineaActual.recorrido = new google.maps.Polyline(trazaRuta);
+                                lineaActual.recorrido.setMap(mapa);
+
+                                tx.executeSql('SELECT latitud AS lat, longitud AS lng, parada_id FROM parada JOIN linea_parada USING(parada_id) WHERE linea_id=?', [lineaId], function(tx, resultSet) {
+                                    for (var i = 0, max = resultSet.rows.length; i < max; i++) {
+                                        row = resultSet.rows.item(i);
+                                        latlng = app.convertirLatLng(row);
+                                        arrayParadas.push(latlng);
+                                        //inserto los marcadores de las paradas
+                                        parada = app.insertarMarcador(latlng, row.parada_id.toString(), "busstop.png", mapa);
+                                        parada.clickable = true;
+                                        lineaActual.paradas.push(parada);
+                                    }
+                                    //Si todavía no definen el origen, centro el mapa en alguna parada
+                                    if (!origen)
+                                        mapa.setCenter(parada.position);
+                                    //Si está definido el origen, centro el mapa ahí y hago rebotar las paradas cercanas
+                                    else
+                                    {
+                                        mapa.setCenter(origen.position);
+                                        app.generarParadasCercanas(arrayParadas);
+                                    }
+                                }, app.consultaError);
+                            },
+                                    app.txError, function() {
+                                        console.log('paradas OK');
+                                    });
+                        });
+
+                //Guardo las varibles globales y Escribo la línea del colectivo en el Header del Mapa
+//                lineaActual.nombre = data.nombre;
+//                lineaActual.numero = data.numero;
+//                lineaActual.grupo_numero = data.grupo_numero;
+//                lineaActual.grupo_nombre = data.grupo_nombre;
+//                $('#headMapa').html(data.numero + ' ' + data.nombre);
+
             }
             else
                 app.cargarLoader(false);
@@ -585,63 +858,6 @@ $(function() {
             lineaActual.paradas = [];
         };
 
-//Recibe las coordenadas de origen y destino y busca en la DB las paradas que pasen por ambos
-//Genera un array de Lineas listo para mostrar en el listView y se lo pasa a app.crearListadoRecorridos()
-        app.listarLineasCercanas = function(cordOrigen, cordDestino) {
-            var filas = 0, metros = 500;
-            app.cargarLoader(true);
-
-            //while (filas === 0 && metros < 1000) {
-            app.algoritmoParadasCercanas(cordOrigen, cordDestino);
-            //}
-
-            /*  app.getJSONremoto(controlador + "controladorParada.php",
-             {
-             Olat: cordOrigen.lat(),
-             Olng: cordOrigen.lng(),
-             Dlat: cordDestino.lat(),
-             Dlng: cordDestino.lng()
-             }, function(data) {
-             if (data.status === 'SinOrigen')
-             app.mostrarModal('No hay paradas cerca del Origen', 'Información');
-             else if (data.status === 'SinDestino')
-             app.mostrarModal('No hay paradas cerca del Destino', 'Información');
-             else
-             app.crearListadoRecorridos(data.lineas);
-             });*/
-        };
-
-        app.algoritmoParadasCercanas = function(cordOrigen, cordDestino) {
-            var filas = 0, metros = 500, algoritmo = "SELECT linea.linea_id, grupo_id, linea.nombre, linea.numero, \n\
-            ROUND( 1000 * ( acos( sin( radians(?) ) * sin( radians( latitud ) ) + cos( radians(?) ) * cos( radians( latitud ) ) * cos( radians(?) - radians( longitud ) ) ) *6378 ) , 6 ) AS distancia \n\
-            FROM parada JOIN linea_parada USING ( parada_id ) JOIN linea USING ( linea_id ) JOIN linea_grupo USING ( linea_id ) \n\
-            JOIN grupo USING ( grupo_id ) GROUP BY linea_id HAVING distancia < ? ORDER BY linea_id ASC";
-
-//( acos( sin( radians(?) )   lat
-// sin( radians( latitud ) )  columna lat sin
-//cos( radians(?) ) lat
-// cos( radians( latitud ) )  columna lat cos
-// cos( radians(?) - radians( longitud ) ) ) lng   -   COS(A-B) = COS A * COS B - SEN A * SEN B    (COS lng - SEN lng)
-
-            db.transaction(function(tx) {
-                tx.executeSql(algoritmo, [cordOrigen.lat(), cordOrigen.lat(), cordOrigen.lng(), metros], encontreParadas, errorParadas);
-            });
-
-            function encontreParadas(tx, resultSet) {
-                console.log(resultSet.rows.length);
-            }
-            
-            function errorParadas(tx, err) {
-                console.log(err.message);
-            }
-
-            /*var algoritmo = "SELECT linea_id, grupo_id, linea.nombre, linea.numero, \n\
-             min( ROUND( 1000 * ( acos( sin( radians($lat) ) * sin( radians( latitud ) ) + cos( radians($lat) ) * cos( radians( latitud ) ) * cos( radians($lng) - radians( longitud ) ) ) *6378 ) , 6 ) ) AS distancia \n\
-             FROM parada JOIN linea_parada USING ( parada_id ) JOIN linea USING ( linea_id ) JOIN linea_grupo USING ( linea_id ) \n\
-             JOIN grupo USING ( grupo_id ) GROUP BY linea_id HAVING distancia < $metros ORDER BY linea_id ASC";*/
-
-        };
-
 //Recibe un array de paradas [json{lat,lng}] 
 //Llena las variables globales: paradaOrigen, paradaDestino y las hace rebotar
         app.generarParadasCercanas = function(paradas) {
@@ -650,6 +866,7 @@ $(function() {
                     puntoDestino = app.calcularMenorDistancia(destino.position, paradas);
             lineaActual.paradaOrigen = puntoOrigen.latlng;
             lineaActual.paradaDestino = puntoDestino.latlng;
+
             //Hago rebotar las paradas cercanas al Origen y Destino
             (lineaActual.paradas[puntoOrigen.indice]).setAnimation(google.maps.Animation.BOUNCE);
             (lineaActual.paradas[puntoDestino.indice]).setAnimation(google.maps.Animation.BOUNCE);
@@ -847,23 +1064,23 @@ $(function() {
         app.calcularDistancia = function(cordOrigen, cordDestino) {
             var lat1 = cordOrigen.lat(), lon1 = cordOrigen.lng(),
                     lat2 = cordDestino.lat(), lon2 = cordDestino.lng(),
-                    dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1),
+                    dLat = app.toRad(lat2 - lat1), dLon = app.toRad(lon2 - lon1),
                     R = 6371, a, c, distancia;
             a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                    Math.cos(app.toRad(lat1)) * Math.cos(app.toRad(lat2)) *
                     Math.sin(dLon / 2) * Math.sin(dLon / 2);
             c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             distancia = R * c;
             return distancia;
+        };
 
-            //Convierte coordenada numérica a radianes        
-            function toRad(value) {
-                return value * Math.PI / 180;
-            }
+//Convierte coordenada numérica a radianes        
+        app.toRad = function(value) {
+            return value * Math.PI / 180;
         };
 
 //Recibe un origen (LatLng) y un array de destinos LatLng
-//Devuelve el destino más próximo al origen (Objeto con coordenada, distancia y posicion en del array)
+//Devuelve el destino más próximo al origen (OBJETO PROPIO con coordenada, distancia y posicion en del array)
         app.calcularMenorDistancia = function(cordOrigen, arraydestino) {
             var distancia = 9999, latlng, indice = 0, distanciaTemp;
             $.each(arraydestino, function(index, item) {
@@ -887,13 +1104,14 @@ $(function() {
             return app.redondear(distanciaTotal, 2);
         };
 
-//Recibe una polilinea
+//Recibe una polilinea y dos puntos donde cortar (LatLng)
 //Devuelve un array de LatLng acotado entre paradaOrigen y paradaDestino
-        app.acotarPolilinea = function(polilinea) {
+        app.acotarPolilinea = function(polilinea, corteOrigen, corteDestino) {
             var recorrido = polilinea.getPath().getArray(), recorridoAcotado = [],
                     //Devuelve el punto (LatLng) del recorrido más cercano a la parada
-                    ptoOrigen = app.calcularMenorDistancia(lineaActual.paradaOrigen, recorrido),
-                    ptoDestino = app.calcularMenorDistancia(lineaActual.paradaDestino, recorrido);
+                    ptoOrigen = app.calcularMenorDistancia(corteOrigen, recorrido),
+                    ptoDestino = app.calcularMenorDistancia(corteDestino, recorrido);
+//                    console.log('corte: ' + corteOrigen + ' - pto: ' + ptoOrigen.latlng);
 
 // //Funciones para ver si están bien los límites, dibujandolos en el mapa
 //    app.insertarMarcador(ptoOrigen.latlng, 'ParadaOrigen', 'origen.png', mapa);
@@ -901,7 +1119,7 @@ $(function() {
 
 //Si el ptoOrigen es más grande que el destino
             if (ptoOrigen.indice > ptoDestino.indice) {
-                app.mostrarModal("El colectivo tiene que dar toda la vuelta para llegar a destino. Quizás le convenga otra línea.", 'Importante');
+//                        app.mostrarModal("El colectivo tiene que dar toda la vuelta para llegar a destino. Quizás le convenga otra línea.", 'Importante');
                 var parte1 = recorrido.slice(ptoOrigen.indice); //corto hasta el final
                 var parte2 = recorrido.slice(0, ptoDestino.indice); //corto desde el principio
                 recorridoAcotado = parte1.concat(parte2);
@@ -921,6 +1139,15 @@ $(function() {
 //Recibe un objeto {lat,lng} y lo convierte a un LatLng
         app.convertirLatLng = function(objeto) {
             return new google.maps.LatLng(objeto.lat, objeto.lng);
+        };
+
+        app.minAHoras = function(min)
+        {
+            var hrs = Math.floor(min / 60);
+            min = min % 60;
+            if (min < 10)
+                min = "0" + min;
+            return hrs + ":" + min;
         };
 
 

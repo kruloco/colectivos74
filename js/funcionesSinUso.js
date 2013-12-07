@@ -216,3 +216,55 @@
  app.crearListadoRecorridos(data.lineas);
  });
  };*/
+
+/*Recibe un archivo JSON (grupo_id/linea_id) y dibuja el recorrido y paradas en el mapa
+ //Guarda la polilínea y las paradas en las variable global lineaActual
+ app.dibujarRecorrido = function(nombreArchivo) {
+ var parada = null, recorrido = [], arrayParadas = [], latlng = null;
+ //Si está en la caché, no vuelvo a dibujar el recorrido
+ if (nombreArchivo !== cache.recorrido) {
+ cache.recorrido = nombreArchivo;
+ $.getJSON("json/" + nombreArchivo + ".json", function(data) {
+ //Guardo las varibles globales y Escribo la línea del colectivo en el Header del Mapa
+ lineaActual.nombre = data.nombre;
+ lineaActual.numero = data.numero;
+ lineaActual.grupo_numero = data.grupo_numero;
+ lineaActual.grupo_nombre = data.grupo_nombre;
+ $('#headMapa').html(data.numero + ' ' + data.nombre);
+ 
+ $.each(data.recorrido, function(index, item) {
+ recorrido.push(app.convertirLatLng(item));
+ // app.insertarMarcador(new google.maps.LatLng(item.lat, item.lng),'', "accesdenied.png",mapa);
+ });
+ var trazaRuta = {
+ path: recorrido,
+ strokeColor: "red",
+ stokeOpacity: 1,
+ strokeWeight: 4,
+ clickable: false
+ };
+ app.vaciarRecorridos();
+ lineaActual.recorrido = new google.maps.Polyline(trazaRuta);
+ lineaActual.recorrido.setMap(mapa);
+ //Inserto los marcadores de las paradas
+ $.each(data.paradas, function(index, item) {
+ latlng = app.convertirLatLng(item);
+ arrayParadas.push(latlng);
+ parada = app.insertarMarcador(latlng, '', "busstop.png", mapa);
+ parada.clickable = false;
+ lineaActual.paradas.push(parada);
+ });
+ //Si todavía no definen el origen, centro el mapa en alguna parada
+ if (!origen)
+ mapa.setCenter(parada.position);
+ //Si está definido el origen, centro el mapa ahí y hago rebotar las paradas cercanas
+ else
+ {
+ mapa.setCenter(origen.position);
+ app.generarParadasCercanas(arrayParadas);
+ }
+ });
+ }
+ else
+ app.cargarLoader(false);
+ };*/
