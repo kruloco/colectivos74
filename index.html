@@ -9,7 +9,7 @@
         <link rel="stylesheet" href="css/jquery.mobile-1.3.2.min.css" />
         <link rel="stylesheet" href="css/jqm-icon-pack-3.0.0-fa.css" />
         <script type="text/javascript" src="cordova.js"></script>
-        <script src="http://maps.google.com/maps/api/js?libraries=places&sensor=true" type="text/javascript"></script>
+        <script src="http://maps.google.com/maps/api/js?v=3.exp&libraries=places&sensor=true" type="text/javascript"></script>
         <script src="js/jquery-1.10.2.min.js"></script>
         <script src="js/init.js"></script>
         <script src="js/jquery.mobile-1.3.2.min.js"></script>
@@ -23,11 +23,10 @@
             </div>
             <div data-role="content">
                 <div class="botonesCentrados">
-                    <a href="#origenPage" data-role="button" id="btnBuscar" data-mini="false">¿Cómo voy?</a>
+                    <a href="#origenPage" data-role="button" id="btnBuscar">¿Cómo voy?</a>
                     <a href="#grupoPage" data-role="button">Todos los Recorridos</a>
-                    <a href="#" data-role="button" id="btnSalir" data-mini="true">Salir</a>
+                    <a href="#" data-role="button" id="btnSalir">Salir</a>
                 </div>
-
                 <a id='lnkDialog' href="#dialog" data-rel="dialog" data-transition="pop" style='display:none;'></a>
             </div>
         </div>
@@ -43,7 +42,7 @@
                     <li data-role='list-divider'>Origen</li>
                     <li>
                         <label for="origen">Escriba el Origen </label>
-                        <input type="text" data-clear-btn="true" name="origen" id="origen" value="Seru 351, Mendoza, Argentina" placeholder="Calle N°, Departamento"/>
+                        <input type="text" data-clear-btn="true" name="origen" id="origen" value="" placeholder="Calle N°, Departamento"/>
                         <div><ul id="ulOrigen" data-role="listview" data-inset="true"></ul></div>
                     </li>
                     <li>
@@ -53,7 +52,7 @@
                     <li data-role='list-divider'>Destino</li>
                     <li>
                         <label for="destino">Escriba el Destino </label>
-                        <input data-clear-btn="true" type="text" name="destino" id="destino" value="Av Perú 1000, Mendoza, Argentina" placeholder="Calle N°, Departamento"  />
+                        <input data-clear-btn="true" type="text" name="destino" id="destino" value="" placeholder="Calle N°, Departamento"  />
                         <div><ul id="ulDestino" data-role="listview" data-inset="true"></ul></div>
                     </li>
                     <li>
@@ -189,6 +188,9 @@
                 <p> Las paradas que estan 'saltando' son las más cercanas al origen y al destino.</p>
                 <p>Si querés ver otros recorrido, tocá el botón <strong>Volver</strong> en la parte superior derecha.</p>
                 <p>Si no sabés cómo llegar a la parada, tocá el botón <strong>'Indicaciones'</strong> y vas a ver los pasos detallados.</p>
+                <hr>
+                <p>Si querés ver en tiempo real cuán cerca está el colectivo de la parada más cercana, tocá el botón <strong>'Rastrear'</strong> y aparecerá el colectivo 'rebotando'.</p>
+                <p><img src="images/mapa/busGPS.png"> Colectivo más cercano.</p>
             </div>    
         </div>
     </body>

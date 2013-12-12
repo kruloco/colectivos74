@@ -24,24 +24,24 @@ $(function() {
                 geocoder = new google.maps.Geocoder(),
                 plazaIndependencia = new google.maps.LatLng(-32.88852486014176, -68.8447093963623),
                 //URL donde hacer las peticiones remotas                
-//                controlador = "http://colectivo.site90.net/";
-        controlador = "http://localhost/colectivosServer/controladores/";
+                controlador = "http://colectivo.site90.net/";
+//        controlador = "http://localhost/colectivosServer/controladores/";
+        google.maps.visualRefresh = true;
+
 
         // Función principal
         app.init = function() {
             document.addEventListener('deviceready', app.deviceReady, false);
             app.bindings();
-
             //Genero una DB colectivos si no existe
-            db = window.openDatabase("colectivosAPP", "1.0", "Colectivos", 1024 * 1024 * 10);
+            db = window.openDatabase("colectivosMza", "1.0", "Colectivos", 1024 * 1024 * 10);
             //Verifica si la DB ya está poblada o si se acaba de crear
+
             db.transaction(function(tx) {
-                tx.executeSql('SELECT * FROM GRUPO', [], function(tx) {
-                    console.log('query select OK');
-                }, app.sqlDBVacia);
+                tx.executeSql('SELECT * FROM GRUPO', [], null, app.sqlDBVacia);
             },
                     app.txError, function() {
-                        console.log('trans principal OK');
+                        app.cargarLoader(false);
                     });
         };
 
@@ -68,7 +68,6 @@ $(function() {
                 sessionStorage.lineaSeleccionadaIndice = $(this).attr("data-linea-indice");
                 lineaActual.nombre = $(this).attr("data-nombre");
                 lineaActual.numero = $(this).attr("data-numero");
-                ;
             });
             //Cuando se carga el listado de lineas
             $("#lineasPage").on("pagebeforeshow", function(e, data) {
@@ -95,6 +94,7 @@ $(function() {
                 "pageshow": function(e) {
                     var linea = sessionStorage.lineaSeleccionada;
                     app.dibujarRecorrido(linea);
+                    $('#headMapa').html(lineaActual.numero + ' ' + lineaActual.nombre);
                 }
             });
             //Cuando se carga la página de Indicaciones
@@ -236,13 +236,14 @@ $(function() {
 
         //Si NO existe la DB
         app.sqlDBVacia = function(tx, err) {
+            app.cargarLoader(true);
+
             //Si no existe la tabla entonces poblo la DB con todos los datos
             if (err.code === 5)
             {
                 app.cargarLoader(true);
                 app.cargarArchivoenDB(tx, 'sqlite/estructura.sql');
                 app.cargarArchivoenDB(tx, 'sqlite/datos.sql');
-                app.cargarLoader(false);
                 return false; //Sin Rollback
             }
             return true; //Rollback
@@ -426,7 +427,7 @@ $(function() {
         //Hace una consulta a la DB y crea la polilinea que representa al recorrido
         //También carga en la variable global mejoresRecorridos el nombre y numero de la linea
         app.traerRecorridoDb = function(tx, indice) {
-            var recorrido = [], recorridoAcotado = [], distanciaColectivo = 0, tiempoColectivo = 0, row = {},
+            var recorrido = [], row = {}, objetoTemp = {},
                     mejorRecorrido = mejoresRecorridos[indice],
                     trazaRuta = {
                         path: null,
@@ -453,14 +454,11 @@ $(function() {
                             recorrido.push(app.convertirLatLng(row));
                         }
                         trazaRuta.path = recorrido;
-                        recorridoAcotado = app.acotarPolilinea(new google.maps.Polyline(trazaRuta), app.convertirLatLng(mejorRecorrido.paradaOrigen), app.convertirLatLng(mejorRecorrido.paradaDestino));
-                        //Calcula la distancia en KM de la polilínea acotada
-                        distanciaColectivo = (app.calcularDistanciaPolilinea(recorridoAcotado.recorrido));
-                        //Calcula el tiempo de recorrido del colectivo sobre esa polilínea a 50km/h
-                        tiempoColectivo = Math.round((distanciaColectivo * 60) / 50);
-                        mejorRecorrido.distanciaColectivo = distanciaColectivo;
-                        mejorRecorrido.tiempoColectivo = tiempoColectivo;
-                        mejorRecorrido.vuelta = recorridoAcotado.vuelta;
+                        objetoTemp = app.calcularDistanciaTiempo(new google.maps.Polyline(trazaRuta), app.convertirLatLng(mejorRecorrido.paradaOrigen), app.convertirLatLng(mejorRecorrido.paradaDestino));
+
+                        mejorRecorrido.distanciaColectivo = objetoTemp.distancia;
+                        mejorRecorrido.tiempoColectivo = objetoTemp.tiempo;
+                        mejorRecorrido.vuelta = objetoTemp.vuelta;
 
                         //Esta es la recursividad para no hacer un FOR con consultas
                         if (mejoresRecorridos.length - 1 > indice) {
@@ -615,11 +613,25 @@ $(function() {
                 app.cargarLoader(true);
                 cache.indicaciones = lineaId;
 
-                var mejorRecorrido = mejoresRecorridos[sessionStorage.lineaSeleccionadaIndice],
-                        distanciaTotal = '', tiempoTotal = '',
-                        distanciaColectivo = mejorRecorrido.distanciaColectivo, tiempoColectivo = mejorRecorrido.tiempoColectivo;
+                var distanciaTotal = '', tiempoTotal = '', distanciaColectivo = 0, tiempoColectivo = 0, vuelta = false;
 
-                mejorRecorrido.vuelta ? app.mostrarModal("El colectivo tiene que dar toda la vuelta para llegar a destino. Quizás le convenga otra línea.", 'Importante') : null;
+                //Si vengo de MEJORES RECORRIDOS, ya tengo todo pre-calculado, solamente lo asigno a las variables
+                if (typeof sessionStorage.lineaSeleccionadaIndice !== 'undefined') {
+                    var mejorRecorrido = mejoresRecorridos[sessionStorage.lineaSeleccionadaIndice];
+                    distanciaColectivo = mejorRecorrido.distanciaColectivo,
+                            tiempoColectivo = mejorRecorrido.tiempoColectivo,
+                            vuelta = mejorRecorrido.vuelta;
+                }
+                //Si vengo de TODOS LOS RECORRIDOS, calculo la distancia y tiempo del recorrido
+                else {
+                    var temp = app.calcularDistanciaTiempo(lineaActual.recorrido, lineaActual.paradaOrigen, lineaActual.paradaDestino);
+                    distanciaColectivo = temp.distancia;
+                    tiempoColectivo = temp.tiempo;
+                    vuelta = temp.vuelta;
+                }
+
+                vuelta ? app.mostrarModal("El colectivo tiene que dar toda la vuelta para llegar a destino. Quizás le convenga otra línea.", 'Importante') : null;
+
                 //Usa Directions para calcular la ruta desde origen->paradaOrigen; paradaDestino->destino
                 app.calcularRuta(origen.position, lineaActual.paradaOrigen, function(ruta) {
                     $('#LDindicaciones1').html('Camina hasta ' + ruta.destino + '.<br>Distancia: ' + ruta.distancia + ' km. Tiempo: ' + ruta.duracion + ' min.');
@@ -689,7 +701,6 @@ $(function() {
 
 //Si NO existe el mapa: genera un objeto de configuración y lo instancia.
         app.cargarMapa = function() {
-            //app.cargarLoader(true);
             var opcionesMapa = {
                 zoomControl: true,
                 panControl: false,
@@ -701,19 +712,13 @@ $(function() {
                 },
                 zoom: 14,
                 mapTypeId: google.maps.MapTypeId.ROADMAP
-//        mapTypeControlOptions: {style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-//        mapTypeControlOptions: {style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-//            position: google.maps.ControlPosition.LEFT_CENTER},
-//        panControlOptions: {
-//            position: google.maps.ControlPosition.LEFT_CENTER
-//        },
             };
             mapa = new google.maps.Map(document.getElementById("map_canvas"), opcionesMapa);
             //Agrego control personalizado de MapType
             var typeControlDiv = document.createElement('div');
             new app.MapTypeControl(typeControlDiv);
             mapa.controls[google.maps.ControlPosition.TOP_LEFT].push(typeControlDiv);
-            //google.maps.event.trigger(mapa, 'resize');
+
             //Cuando el mapa está cargado, saca el Loader bounds_changed
             google.maps.event.addListener(mapa, 'projection_changed', function() {
                 app.cargarLoader(true);
@@ -721,9 +726,6 @@ $(function() {
             google.maps.event.addListener(mapa, 'tilesloaded', function() {
                 app.cargarLoader(false);
             });
-//        google.maps.event.addListener(mapa, 'idle', function() {
-//            app.cargarLoader(false);
-//        });
             //Si está seteado el Origen y Destino, los muestro en el mapa
             if (origen && destino) {
                 origen.setMap(mapa);
@@ -804,18 +806,12 @@ $(function() {
                     }, app.consultaError);
                     //Traigo el nombre y numero del grupo
                     tx.executeSql('SELECT nombre, numero FROM grupo JOIN linea_grupo USING(grupo_id) WHERE linea_id=?', [lineaId], function(tx, resultSet) {
-                        //Si vengo del listado de mejores recorridos, guardo el recorrido en una variable
+                        //Si vengo del listado de MEJORES RECORRIDOS, guardo el recorrido en una variable
                         mejorRecorrido = (typeof sessionStorage.lineaSeleccionadaIndice === 'undefined') ? null : mejoresRecorridos[sessionStorage.lineaSeleccionadaIndice];
                         row = resultSet.rows.item(0);
-                        //Guardo las varibles globales y Escribo la línea del colectivo en el Header del Mapa
+                        //Guardo las varibles globales para escribirlas luego en el Header del Mapa
                         lineaActual.grupo_numero = row.numero;
                         lineaActual.grupo_nombre = row.nombre;
-                        if (mejorRecorrido) {
-                            lineaActual.paradaOrigen = app.convertirLatLng(mejorRecorrido.paradaOrigen);
-                            lineaActual.paradaDestino = app.convertirLatLng(mejorRecorrido.paradaDestino);
-                        }
-                        $('#headMapa').html(lineaActual.numero + ' ' + lineaActual.nombre);
-
                     }, app.consultaError);
                 },
                         app.txError, function() {
@@ -831,7 +827,6 @@ $(function() {
                                     for (var i = 0, max = resultSet.rows.length; i < max; i++) {
                                         row = resultSet.rows.item(i);
                                         latlng = app.convertirLatLng(row);
-                                        arrayParadas.push(latlng);
                                         //inserto los marcadores de las paradas
                                         parada = app.insertarMarcador(latlng, i.toString(), "busstop.png", mapa);
                                         parada.clickable = true;
@@ -839,11 +834,25 @@ $(function() {
                                         if (mejorRecorrido && (mejorRecorrido.paradaOrigen.id === row.parada_id || mejorRecorrido.paradaDestino.id === row.parada_id)) {
                                             parada.setAnimation(google.maps.Animation.BOUNCE);
                                         }
+                                        else {
+                                            //Si vengo de TODOS LOS RECORRIDOS, guardo las paradas en un array para luego calcular la mas cercana al origen
+                                            arrayParadas.push(latlng);
+                                        }
                                         lineaActual.paradas.push(parada);
                                     }
                                     //Si todavía no definen el origen centro el mapa en alguna parada; sino lo centro en el origen
                                     var centro = origen ? origen.position : parada.position;
                                     mapa.setCenter(centro);
+
+                                    //Si vengo de MEJORES RECORRIDOS, guardo en las variables globales las paradas mas cercanas a origen y destino
+                                    if (mejorRecorrido) {
+                                        lineaActual.paradaOrigen = app.convertirLatLng(mejorRecorrido.paradaOrigen);
+                                        lineaActual.paradaDestino = app.convertirLatLng(mejorRecorrido.paradaDestino);
+                                    }
+                                    //Si vengo de TODOS LOS RECORRIDOS, calculo las paradas mas cercanas al origen y destino
+                                    else if (origen) {
+                                        app.generarParadasCercanas(arrayParadas);
+                                    }
 
                                 }, app.consultaError);
                             },
@@ -854,10 +863,29 @@ $(function() {
                 app.cargarLoader(false);
         };
 
+
+
+        //Recibe un array de paradas [json{lat,lng}] 
+        //Llena las variables globales: paradaOrigen, paradaDestino y las hace rebotar
+        app.generarParadasCercanas = function(paradas) {
+            //Devuelve la parada (LatLng) más cercana al origen y al destino
+            var puntoOrigen = app.calcularMenorDistancia(origen.position, paradas),
+                    puntoDestino = app.calcularMenorDistancia(destino.position, paradas);
+            lineaActual.paradaOrigen = puntoOrigen.latlng;
+            lineaActual.paradaDestino = puntoDestino.latlng;
+            //Hago rebotar las paradas cercanas al Origen y Destino
+            (lineaActual.paradas[puntoOrigen.indice]).setAnimation(google.maps.Animation.BOUNCE);
+            (lineaActual.paradas[puntoDestino.indice]).setAnimation(google.maps.Animation.BOUNCE);
+        };
+
+
 //Vaciar el array de linea.paradas, linea.recorrido y el colectivo actual GPS
         app.vaciarRecorridos = function() {
-            if (lineaActual.recorrido)
+
+            if (lineaActual.recorrido) {
                 lineaActual.recorrido.setMap(null);
+                lineaActual.recorrido = null;
+            }
             if (lineaActual.paradas)
                 $.each(lineaActual.paradas, function(index, item) {
                     item.setMap(null);
@@ -865,6 +893,10 @@ $(function() {
             lineaActual.paradas = [];
             if (colectivo)
                 colectivo.setMap(null);
+//Este es un truco para que en el celular refresque el mapa con la nueva polilinea
+//            google.maps.event.trigger(mapa, 'resize');
+            mapa.setZoom(13);
+            mapa.setZoom(14);
         };
 
 //Recibe array de colectivos {JSON{id,lat,lng}}
@@ -1097,7 +1129,7 @@ $(function() {
         };
 
 //Recibe una polilinea y dos puntos donde cortar (LatLng)
-//Devuelve un Objeto con:
+//Devuelve un Objeto=
 //recorrido: array de LatLng acotado entre paradaOrigen y paradaDestino
 //vuelta: TRUE si el ptoOrigen es Mayor que el puntoDestino
         app.acotarPolilinea = function(polilinea, corteOrigen, corteDestino) {
@@ -1122,7 +1154,21 @@ $(function() {
                 recorridoAcotado = recorrido.slice(ptoOrigen.indice, ptoDestino.indice);
             }
             return {recorrido: recorridoAcotado, vuelta: vuelta};
-        }
+        };
+
+        //Recibe un recorrido (polyline) y lo acota entre el origen y el destino 
+        //Devuelve un objeto=
+        //distancia y tiempo que tarde un colectivo en recorrerlo.
+        //vuelta: devuelve true si el destino está antes que el origen en el recorrido
+        app.calcularDistanciaTiempo = function(recorrido, corteOrigen, corteDestino) {
+            //Corta la Polilinea desde la paradaOrigen hasta paradaDestino
+            var recorridoAcotado = app.acotarPolilinea(recorrido, corteOrigen, corteDestino);
+            //Calcula la distancia en KM de la polilínea acotada
+            var distancia = (app.calcularDistanciaPolilinea(recorridoAcotado.recorrido)),
+                    //Calcula el tiempo de recorrido del colectivo sobre esa polilínea a 40km/h
+                    tiempo = Math.round((distancia * 60) / 40);
+            return {tiempo: tiempo, distancia: distancia, vuelta: recorridoAcotado.vuelta};
+        };
 
 //Recibe el valor a redondear y la cantidad de decimales
         app.redondear = function(valor, decimales) {
