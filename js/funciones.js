@@ -322,10 +322,9 @@ $(function() {
 
         app.paradasOk = function(tx, resultSet, sen_lat, cos_lat, cos_lng, sen_lng, radio, query, lugar) {
             var cantidad = resultSet.rows.length, radioNuevo, radioKM = Math.acos(radio) * 6378;
-            console.debug('CANTIDAD ' + lugar + ': ' + cantidad);
-            //Si no hay resultados, repito la consula con un radio mayor
-            console.log('radio KM: ' + radioKM);
-            if (cantidad === 0 && radioKM < 1.3)
+            console.debug('CANTIDAD ' + lugar + ': ' + cantidad + 'radio KM: ' + radioKM);
+            //Si hay menos de 5 resultados y el radio en menor a 1.3KM, repito la consula con un radio mayor
+            if (cantidad < 5 && radioKM < 1.3)
             {
                 //Aumento el radio en 100 metros y luego lo convierto
                 radioKM += 0.1;
@@ -583,7 +582,7 @@ $(function() {
 
         //Recibe ID de Grupo y Genera un listView dinámico de sus lineas
         app.crearListadoLineas = function(idGrupo) {
-            var html = '', li = "<li class='linea' data-linea='LINEA' data-nombre='NOMBRE' data-numero='NUMERO'><a href='#mapaPage'><div id='cuadradito'>NUMERO</div>NOMBRE</a></li>", row;
+            var html = '', li = "<li class='linea' data-linea='LINEA' data-nombre='NOMBRE' data-numero='NUMERO' data-linea-indice='vacio'><a href='#mapaPage'><div id='cuadradito'>NUMERO</div>NOMBRE</a></li>", row;
             db.transaction(
                     function(tx) {
                         tx.executeSql("SELECT * FROM linea JOIN linea_grupo USING ( linea_id ) WHERE grupo_id=?", [idGrupo],
@@ -615,19 +614,19 @@ $(function() {
 
                 var distanciaTotal = '', tiempoTotal = '', distanciaColectivo = 0, tiempoColectivo = 0, vuelta = false;
 
-                //Si vengo de MEJORES RECORRIDOS, ya tengo todo pre-calculado, solamente lo asigno a las variables
-                if (typeof sessionStorage.lineaSeleccionadaIndice !== 'undefined') {
-                    var mejorRecorrido = mejoresRecorridos[sessionStorage.lineaSeleccionadaIndice];
-                    distanciaColectivo = mejorRecorrido.distanciaColectivo,
-                            tiempoColectivo = mejorRecorrido.tiempoColectivo,
-                            vuelta = mejorRecorrido.vuelta;
-                }
                 //Si vengo de TODOS LOS RECORRIDOS, calculo la distancia y tiempo del recorrido
-                else {
+                if (sessionStorage.lineaSeleccionadaIndice === 'vacio') {
                     var temp = app.calcularDistanciaTiempo(lineaActual.recorrido, lineaActual.paradaOrigen, lineaActual.paradaDestino);
                     distanciaColectivo = temp.distancia;
                     tiempoColectivo = temp.tiempo;
                     vuelta = temp.vuelta;
+                }
+                //Si vengo de MEJORES RECORRIDOS, ya tengo todo pre-calculado, solamente lo asigno a las variables
+                else {
+                    var mejorRecorrido = mejoresRecorridos[sessionStorage.lineaSeleccionadaIndice];
+                    distanciaColectivo = mejorRecorrido.distanciaColectivo,
+                            tiempoColectivo = mejorRecorrido.tiempoColectivo,
+                            vuelta = mejorRecorrido.vuelta;
                 }
 
                 vuelta ? app.mostrarModal("El colectivo tiene que dar toda la vuelta para llegar a destino. Quizás le convenga otra línea.", 'Importante') : null;
@@ -807,7 +806,7 @@ $(function() {
                     //Traigo el nombre y numero del grupo
                     tx.executeSql('SELECT nombre, numero FROM grupo JOIN linea_grupo USING(grupo_id) WHERE linea_id=?', [lineaId], function(tx, resultSet) {
                         //Si vengo del listado de MEJORES RECORRIDOS, guardo el recorrido en una variable
-                        mejorRecorrido = (typeof sessionStorage.lineaSeleccionadaIndice === 'undefined') ? null : mejoresRecorridos[sessionStorage.lineaSeleccionadaIndice];
+                        mejorRecorrido = (sessionStorage.lineaSeleccionadaIndice === 'vacio') ? null : mejoresRecorridos[sessionStorage.lineaSeleccionadaIndice];
                         row = resultSet.rows.item(0);
                         //Guardo las varibles globales para escribirlas luego en el Header del Mapa
                         lineaActual.grupo_numero = row.numero;
