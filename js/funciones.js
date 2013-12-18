@@ -893,7 +893,7 @@ $(function() {
             if (colectivo)
                 colectivo.setMap(null);
 //Este es un truco para que en el celular refresque el mapa con la nueva polilinea
-//            google.maps.event.trigger(mapa, 'resize');
+            google.maps.event.trigger(mapa, 'resize');
             mapa.setZoom(13);
             mapa.setZoom(14);
         };
